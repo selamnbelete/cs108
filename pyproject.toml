@@ -8,5 +8,6 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.4",
     "ollama>=0.6.1",
+    "pygame>=2.6.1",
     "pyqt6>=6.11.0",
 ]
