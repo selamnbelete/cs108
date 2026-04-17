@@ -14,3 +14,10 @@
 1. For the first several seconds, the trails stay close together. Then they diverge. Approximately how long does it take before the trails look completely different from each other?
     * 20 to 30 seconds
 2. Try changing base_angle to np.pi * 0.2 (a small, low-energy swing). Do the trails diverge as quickly? Why do you think that is?
+    * At first, the trails do not diverge quickly and they stay close together. But after some time, they start to diverge fast. I think this happens because the system starts with low energy and small movement, so differences are small at the beginning. As time goes on, even small differences grow larger and cause the paths to separate quickly.
+## Model 4:
+1. Run the script twice without changing anything. Describe how the two galaxies differ. What is the source of that variation?
+    * The two galaxies look similar, but they are not exactly the same. The stars are placed in different positions, the brightness changes a little, and the clumps are in different spots. This happens because the code uses random values each time it runs.
+2. Change NUM_ARMS to 2, then 6. How does the visual feel change?
+    * When I change it to 2, the galaxy looks more simple and open. When I change it to 6, it looks more full and crowded. The number of arms changes how dense and detailed the galaxy looks.
+    

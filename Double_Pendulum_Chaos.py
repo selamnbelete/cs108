@@ -7,7 +7,7 @@ dt = 0.02
 N = 30  # number of pendulums
 
 # Nearly identical starting angles
-base_angle = np.pi * 0.6
+base_angle = np.pi * 0.2
 theta1 = np.full(N, base_angle) + np.linspace(-0.001, 0.001, N)
 theta2 = np.full(N, base_angle) + np.linspace(-0.001, 0.001, N)
 dth1 = np.zeros(N)

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 np.random.seed(None)
 
 # TRY CHANGING THESE!
-NUM_ARMS = 4
+NUM_ARMS = 6
 STARS_PER_ARM = 2000
 NOISE = 0.15
 SPREAD = 0.12
