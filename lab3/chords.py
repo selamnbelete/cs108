@@ -1,4 +1,4 @@
-from lab3.Sound_base import *
+from Sound_base import *
 
 def note(freq, duration, amplitude=0.3, waveform='sine'):
     t = timeline(duration)

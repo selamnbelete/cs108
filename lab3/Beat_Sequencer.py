@@ -1,4 +1,4 @@
-from lab3.Sound_base import *
+from Sound_base import *
 
 def kick(duration=0.4):
     """Low thump — a sine wave that drops in pitch quickly."""

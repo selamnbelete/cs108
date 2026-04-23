@@ -1,4 +1,4 @@
-from lab3.Sound_base import *
+from Sound_base import *
 
 freq = 440
 dur  = 1.5

@@ -1,4 +1,4 @@
-from lab3.Sound_base import *
+from Sound_base import *
 
 def harmonic_tone(freq, duration, num_harmonics=6):
     t = timeline(duration)
