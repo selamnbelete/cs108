@@ -1,4 +1,4 @@
-from ollama_client import call_ollama
+from lab1.ollama_client import call_ollama
 
 prompt = "Tell me a cool story"
 

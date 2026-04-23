@@ -1,4 +1,4 @@
-from ollama_client import call_ollama
+from lab1.ollama_client import call_ollama
 
 prompt = "Write a creative opening line for a story:"
 
