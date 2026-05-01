@@ -27,6 +27,7 @@ class Plant:
                 self.die()
 
     def die(self):
+        self.health = 0
         print("The plant has died.")
 
 # Main block to test the Plant class

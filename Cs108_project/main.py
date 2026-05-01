@@ -1,4 +1,6 @@
 import pygame
+from Plant_system import Plant, SEED, GROWING, FULLY_GROWN
+
 pygame.init()
 
 width = 800
@@ -25,8 +27,9 @@ while running:
     dt = clock.tick(60) / 1000  # Get time since last frame
 
     # Update plant growth and aging
-    my_plant.grow()
-    my_plant.age()
+    #
+    # my_plant.grow()
+    #my_plant.age()
 
     # Clear screen with white
     screen.fill((255, 255, 255))
@@ -37,7 +40,8 @@ while running:
     elif my_plant.stage == GROWING:
         pygame.draw.rect(screen, (0, 255, 0), (400 - my_plant.size, 300, my_plant.size * 2, 10))  # Growing stage
     elif my_plant.stage == FULLY_GROWN:
-        pygame.draw.rect(screen, (0, 255, 0), (400 - my_plant.size, 300, my_plant.size * 2, 10))  # Fully grown
+        pygame.draw.rect(screen, (0, 180, 0), (395, 250, 10, 60))     # Stem
+        pygame.draw.circle(screen, (255, 100, 150), (400, 240), 20)   # Flower
 
     pygame.display.flip()
 
