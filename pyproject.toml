@@ -9,7 +9,9 @@ dependencies = [
     "numpy>=2.4.4",
     "ollama>=0.6.1",
     "pygame>=2.6.1",
+    "pyopengl>=3.1.10",
     "pyqt6>=6.11.0",
     "scipy>=1.17.1",
     "sounddevice>=0.5.5",
+    "vispy>=0.16.1",
 ]
