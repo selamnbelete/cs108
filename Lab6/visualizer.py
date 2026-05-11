@@ -24,7 +24,7 @@ FRAME_SIZE    = 2048
 FPS           = 60
 BG_COLOR      = (30, 30, 46)
 PEAK_COLOR    = (243, 139, 168)
-peak_decay    = 0.97
+peak_decay    = 0.5
 
 # ── Pygame + mixer ────────────────────────────────────────────────────────────
 pygame.init()
