@@ -54,6 +54,30 @@ def compose_scale_melody(scale_notes, length=32, bpm=120):
     mid.save("melody.mid")
     return "melody.mid"
 
+def compose_fractal(base_notes, depth=3, bpm=100):
+    """Recursively repeat a motif at different scales."""
+    tempo   = int(60_000_000 / bpm)
+    quarter = TICKS
+
+    mid   = MidiFile(ticks_per_beat=TICKS)
+    track = MidiTrack()
+    mid.tracks.append(track)
+    track.append(mido.MetaMessage('set_tempo', tempo=tempo, time=0))
+
+    def motif(notes, dur, level):
+        if level == 0:
+            for n in notes:
+                add_note(track, n, dur)
+        else:
+            for n in notes:
+                motif([n, n+2, n+4], dur // 3, level - 1)
+
+    motif(base_notes, quarter * 4, depth)
+    mid.save("fractal.mid")
+    return "fractal.mid"
+
+path = compose_fractal([60, 64, 67, 72], depth=3, bpm=80)
+
 # A minor pentatonic starting at A3
 A_MINOR_PENTATONIC = [57, 60, 62, 64, 67, 69, 72, 74, 76]
 
