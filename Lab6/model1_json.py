@@ -82,9 +82,10 @@ def generate_and_play(prompt, waveform='sine', retries=3):
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 prompts = [
-    "Compose a gentle 12-note lullaby melody in C major.",
-    "Compose a 16-note tense, minor-key melody that builds in intensity.",
-    "Compose a 14-note melody that sounds like walking through a forest.",
+    "Compose a happy jazz melody with a smooth relaxing feeling.",
+#    "Compose a gentle 12-note lullaby melody in C major.",
+#    "Compose a 16-note tense, minor-key melody that builds in intensity.",
+#    "Compose a 14-note melody that sounds like walking through a forest.",
 ]
 
 for prompt in prompts:
