@@ -52,22 +52,34 @@ def draw_background():
     pygame.draw.circle(screen, (255, 245, 180), (700, 90), 35)
 
     # clouds
-    pygame.draw.circle(screen, (255, 255, 255), (150, 100), 30)
-    pygame.draw.circle(screen, (255, 255, 255), (180, 90), 35)
-    pygame.draw.circle(screen, (255, 255, 255), (210, 100), 30)
-
-    pygame.draw.circle(screen, (255, 255, 255), (500, 130), 25)
-    pygame.draw.circle(screen, (255, 255, 255), (530, 120), 30)
-    pygame.draw.circle(screen, (255, 255, 255), (560, 130), 25)
+    pygame.draw.circle(screen, (245, 245, 245), (150, 100), 30)
+    pygame.draw.circle(screen, (245, 245, 245), (180, 90), 35)
+    pygame.draw.circle(screen, (245, 245, 245), (210, 100), 30)
+    pygame.draw.circle(screen, (245, 245, 245), (500, 130), 25)
+    pygame.draw.circle(screen, (245, 245, 245), (530, 120), 30)
+    pygame.draw.circle(screen, (245, 245, 245), (560, 130), 25)
 
     # grass
     pygame.draw.rect(screen, (100, 190, 100), (0, 420, WIDTH, 180))
 
     # dirt shadow
-    pygame.draw.ellipse(screen, (90, 55, 30), (255, 395, 290, 90))
+    pygame.draw.ellipse(screen, (100, 60, 35), (255, 395, 290, 90))
 
     # dirt top
-    pygame.draw.ellipse(screen, (120, 75, 40), (270, 390, 260, 80))
+    pygame.draw.ellipse(screen, (135, 85, 45), (270, 390, 260, 80))
+
+    # grass blades
+    for x in range(0, WIDTH, 20):
+        pygame.draw.line(screen, (90, 170, 90), (x, 420), (x + 5, 405), 2)
+    
+    # tiny flowers
+    pygame.draw.circle(screen, (255, 255, 255), (120, 470), 5)
+    pygame.draw.circle(screen, (255, 255, 255), (680, 520), 5)
+    pygame.draw.circle(screen, (255, 255, 255), (740, 460), 5)
+
+    pygame.draw.circle(screen, (255, 210, 80), (120, 470), 2)
+    pygame.draw.circle(screen, (255, 210, 80), (680, 520), 2)
+    pygame.draw.circle(screen, (255, 210, 80), (740, 460), 2)
 
 def draw_plant():
     if plant.stage == SEED:
@@ -90,15 +102,25 @@ def draw_plant():
         pygame.draw.ellipse(screen, (40, 170, 60), (350, 310, 60, 30))
         pygame.draw.ellipse(screen, (40, 170, 60), (395, 290, 60, 30))
 
-        # flower petals
-        pygame.draw.circle(screen, (255, 120, 170), (400, 230), 22)
-        pygame.draw.circle(screen, (255, 120, 170), (375, 250), 22)
-        pygame.draw.circle(screen, (255, 120, 170), (425, 250), 22)
-        pygame.draw.circle(screen, (255, 120, 170), (390, 270), 22)
-        pygame.draw.circle(screen, (255, 120, 170), (410, 270), 22)
+        # flower petals with outline
+        pygame.draw.circle(screen, (220, 90, 140), (400, 230), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (400, 230), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (375, 250), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (375, 250), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (425, 250), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (425, 250), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (390, 270), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (390, 270), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (410, 270), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (410, 270), 20)
 
         # flower center
-        pygame.draw.circle(screen, (255, 220, 80), (400, 250), 18)
+        pygame.draw.circle(screen, (240, 190, 50), (400, 250), 20)
+        pygame.draw.circle(screen, (255, 220, 100), (400, 250), 15)
 
     elif plant.stage == DEAD:
         pygame.draw.rect(screen, (90, 60, 30), (395, 310, 10, 90))
@@ -106,11 +128,25 @@ def draw_plant():
         pygame.draw.line(screen, (90, 60, 30), (400, 350), (440, 315), 5)
         draw_text("The plant died :(", 310, 180, font, (120, 0, 0))
 
-def draw_stats():
-    draw_text(f"Health: {int(plant.health)}", 30, 30, small_font)
-    draw_text(f"Water: {int(plant.water)}", 30, 60, small_font)
-    draw_text(f"Sunlight: {int(plant.sunlight)}", 30, 90, small_font)
+def draw_bar(label, value, x, y, color):
+    # label
+    draw_text(label, x, y, small_font, (40, 40, 40))
 
+    # bar background
+    pygame.draw.rect(screen, (230, 230, 230), (x, y + 28, 160, 18), border_radius=8)
+
+    # bar fill
+    fill_width = int((value / 100) * 160)
+    pygame.draw.rect(screen, color, (x, y + 28, fill_width, 18), border_radius=8)
+
+    # outline
+    pygame.draw.rect(screen, (80, 80, 80), (x, y + 28, 160, 18), 2, border_radius=8)
+
+def draw_stats():
+    draw_bar("Health", plant.health, 30, 30, (90, 200, 120))
+    draw_bar("Water", plant.water, 30, 90, (80, 170, 240))
+    draw_bar("Sunlight", plant.sunlight, 30, 150, (255, 210, 80))
+    
     if plant.stage == SEED:
         stage_text = "Stage: Seed"
     elif plant.stage == GROWING:
@@ -120,12 +156,13 @@ def draw_stats():
     else:
         stage_text = "Stage: Dead"
 
-    draw_text(stage_text, 30, 120, small_font)
+    draw_text(stage_text, 30, 215, small_font, (40, 40, 40))
 
 def draw_game_page():
     draw_background()
     draw_plant()
     draw_stats()
+    draw_text("Take care of your plant", 300, 20, small_font, (50, 80, 50))
 
     water_button.draw(screen, small_font)
     sun_button.draw(screen, small_font)
