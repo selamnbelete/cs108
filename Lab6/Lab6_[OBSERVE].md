@@ -38,17 +38,20 @@
 
 **[OBSERVE11]**
 - Your prompt:Compose a happy jazz melody with a smooth relaxing feeling.
-- What the model composed (describe the melody): The melody sounded soft and calm with some higher notes that made it feel happy. The rhythm was smooth and not too fast. It kind of sounded like background music in a cafe.
+- What the model composed (describe the melody): The melody sounded soft and calm with some higher notes that made it feel happy. The rhythm was smooth and not too fast.
 
 ## Model 6: Ollama → ABC Notation → MIDI → Sound
-**[OBSERVE11]**
+**[OBSERVE12]**
 - Yes, the Dorian melody sounded different from a normal minor melody. It still sounded a little dark, but not as sad. It had a more mysterious and smooth feeling. The waltz melody also sounded different because the 3/4 rhythm made it feel like dancing music.
 
 ## Model 7: Ollama → Python Code → Sound
-**[OBSERVE12]**
-- jhgk
+
 
 **[OBSERVE13]**
-- Your prompt:
-- did the code run? What did it produce?
+- No, the model did not write the same code every time. Sometimes the code worked correctly, and sometimes it gave errors. One error I got was:
+"ValueError: No 'wave' variable produced".
+This happened because the model forgot to save the final result into the wave variable.
 
+**[OBSERVE14]**
+- Your prompt: Write code that creates a slow piano melody with random notes in C major using sine waves.
+- Did the code run? What did it produce?: Yes, the code ran correctly. It produced a slow and soft melody with random notes. The music sounded calm and peaceful, and some notes repeated in a nice way.
