@@ -1,4 +1,5 @@
 import pygame
+import math
 from Plant_system import Plant, SEED, GROWING, FULLY_GROWN, DEAD
 from Button import Button
 
@@ -81,51 +82,97 @@ def draw_background():
     pygame.draw.circle(screen, (255, 210, 80), (680, 520), 2)
     pygame.draw.circle(screen, (255, 210, 80), (740, 460), 2)
 
-def draw_plant():
+def draw_plant(wave_offset, bounce_offset):
+    # SEED
     if plant.stage == SEED:
         pygame.draw.circle(screen, (80, 50, 20), (400, 395), 10)
 
+    # GROWING
     elif plant.stage == GROWING:
+
         stem_height = plant.size * 15
 
-        # stem
-        pygame.draw.rect(screen, (60, 160, 70), (395, 395 - stem_height, 10, stem_height), border_radius=5)
+        # moving stem
+        stem_x = 395 + wave_offset * 0.2
+
+        pygame.draw.rect(
+            screen,
+            (60, 160, 70),
+            (stem_x, 395 - stem_height, 10, stem_height),
+            border_radius=5
+        )
 
         # leaves
-        pygame.draw.ellipse(screen, (70, 200, 90), (360, 360 - stem_height, 50, 28))
-        pygame.draw.ellipse(screen, (70, 200, 90), (392, 340 - stem_height, 50, 28))
+        pygame.draw.ellipse(
+            screen,
+            (70, 200, 90),
+            (360 + wave_offset * 0.3, 360 - stem_height, 50, 28)
+        )
 
+        pygame.draw.ellipse(
+            screen,
+            (70, 200, 90),
+            (392 + wave_offset * 0.3, 340 - stem_height, 50, 28)
+        )
+
+    # FULLY GROWN
     elif plant.stage == FULLY_GROWN:
-        pygame.draw.rect(screen, (60, 160, 70), (395, 250, 10, 150), border_radius=5)
+
+        # moving stem
+        stem_x = 395 + wave_offset * 0.2
+
+        pygame.draw.rect(
+            screen,
+            (60, 160, 70),
+            (stem_x, 250, 10, 150),
+            border_radius=5
+        )
 
         # leaves
-        pygame.draw.ellipse(screen, (40, 170, 60), (350, 310, 60, 30))
-        pygame.draw.ellipse(screen, (40, 170, 60), (395, 290, 60, 30))
+        pygame.draw.ellipse(
+            screen,
+            (40, 170, 60),
+            (350 + wave_offset * 0.2, 310, 60, 30)
+        )
 
-        # flower petals with outline
-        pygame.draw.circle(screen, (220, 90, 140), (400, 230), 24)
-        pygame.draw.circle(screen, (255, 120, 170), (400, 230), 20)
+        pygame.draw.ellipse(
+            screen,
+            (40, 170, 60),
+            (395 + wave_offset * 0.2, 290, 60, 30)
+        )
 
-        pygame.draw.circle(screen, (220, 90, 140), (375, 250), 24)
-        pygame.draw.circle(screen, (255, 120, 170), (375, 250), 20)
+        # animated flower position
+        flower_x = 400 + wave_offset
+        flower_y = 250 + bounce_offset
 
-        pygame.draw.circle(screen, (220, 90, 140), (425, 250), 24)
-        pygame.draw.circle(screen, (255, 120, 170), (425, 250), 20)
+        # petals with outline
+        pygame.draw.circle(screen, (220, 90, 140), (flower_x, flower_y - 20), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (flower_x, flower_y - 20), 20)
 
-        pygame.draw.circle(screen, (220, 90, 140), (390, 270), 24)
-        pygame.draw.circle(screen, (255, 120, 170), (390, 270), 20)
+        pygame.draw.circle(screen, (220, 90, 140), (flower_x - 25, flower_y), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (flower_x - 25, flower_y), 20)
 
-        pygame.draw.circle(screen, (220, 90, 140), (410, 270), 24)
-        pygame.draw.circle(screen, (255, 120, 170), (410, 270), 20)
+        pygame.draw.circle(screen, (220, 90, 140), (flower_x + 25, flower_y), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (flower_x + 25, flower_y), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (flower_x - 10, flower_y + 20), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (flower_x - 10, flower_y + 20), 20)
+
+        pygame.draw.circle(screen, (220, 90, 140), (flower_x + 10, flower_y + 20), 24)
+        pygame.draw.circle(screen, (255, 120, 170), (flower_x + 10, flower_y + 20), 20)
 
         # flower center
-        pygame.draw.circle(screen, (240, 190, 50), (400, 250), 20)
-        pygame.draw.circle(screen, (255, 220, 100), (400, 250), 15)
+        pygame.draw.circle(screen, (240, 190, 50), (flower_x, flower_y), 20)
+        pygame.draw.circle(screen, (255, 220, 100), (flower_x, flower_y), 15)
 
+    # DEAD
     elif plant.stage == DEAD:
+
         pygame.draw.rect(screen, (90, 60, 30), (395, 310, 10, 90))
+
         pygame.draw.line(screen, (90, 60, 30), (400, 340), (360, 310), 5)
         pygame.draw.line(screen, (90, 60, 30), (400, 350), (440, 315), 5)
+
         draw_text("The plant died :(", 310, 180, font, (120, 0, 0))
 
 def draw_bar(label, value, x, y, color):
@@ -158,10 +205,11 @@ def draw_stats():
 
     draw_text(stage_text, 30, 215, small_font, (40, 40, 40))
 
-def draw_game_page():
+def draw_game_page(wave_offset, bounce_offset):
     draw_background()
-    draw_plant()
+    draw_plant(wave_offset, bounce_offset)
     draw_stats()
+
     draw_text("Take care of your plant", 300, 20, small_font, (50, 80, 50))
 
     water_button.draw(screen, small_font)
@@ -200,7 +248,12 @@ while running:
 
     elif game_state == "game":
         plant.update()
-        draw_game_page()
+
+        time = pygame.time.get_ticks()
+        wave_offset = math.sin(time * 0.003) * 4
+        bounce_offset = math.sin(time * 0.006) * 3
+
+        draw_game_page(wave_offset, bounce_offset)
 
     pygame.display.flip()
 
