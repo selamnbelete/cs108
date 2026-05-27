@@ -24,7 +24,7 @@ Ancient Rome,
 I was surprised it connected that fast.
 
 ## [OBSERVE6]
--I changed the topics to “Basketball” and “Black Hole.” It took 5 hops to connect them. One of the connecting articles was “Physics,” which I did not expect at first, but it made sense because basketball uses physics concepts like motion and force.
+- I changed the topics to “Basketball” and “Black Hole.” It took 5 hops to connect them. One of the connecting articles was “Physics,” which I did not expect at first, but it made sense because basketball uses physics concepts like motion and force.
 
 # Part 4: Hacker News Pulse
 ## [OBSERVE7]
@@ -56,9 +56,9 @@ I noticed that “member of band” was the most common relationship type in mos
 ## [OBSERVE13]
 - I started with Marie Curie.
 Three surprising properties were:
-educated at -> University of Paris
-award received -> Nobel Prize in Physics
-spouse -> Pierre Curie
+educated at -> University of Paris, 
+award received -> Nobel Prize in Physics, 
+spouse -> Pierre Curie, 
 The value types were school, award, and person.
 
 ## [OBSERVE14]
