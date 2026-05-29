@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Word Shift</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0b0d12; --bg2:#11141c; --surface:#181c28;
+  --border:rgba(255,255,255,0.07); --text:#e2e4ec; --muted:#6b7080;
+  --left:#f97316; --right:#60a5fa; --neutral:#6b7080;
+}
+body { background:var(--bg); color:var(--text); font-family:'SF Mono','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+#toolbar h1 { font-size:13px; font-weight:600; color:var(--neutral); letter-spacing:.08em; text-transform:uppercase; }
+.sub-label { font-size:12px; font-weight:700; padding:3px 8px; border-radius:4px; }
+.sub-label.left  { color:var(--left);  background:rgba(249,115,22,.12); }
+.sub-label.right { color:var(--right); background:rgba(96,165,250,.12); }
+input[type=text] { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; outline:none; width:140px; }
+input.left-input:focus  { border-color:var(--left); }
+input.right-input:focus { border-color:var(--right); }
+button { background:var(--neutral); border:none; border-radius:6px; color:#0b0d12; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:.05em; padding:6px 14px; text-transform:uppercase; }
+button:hover { opacity:.85; } button:disabled { opacity:.3; cursor:not-allowed; }
+select { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:12px; padding:5px 8px; outline:none; }
+label { font-size:12px; color:var(--muted); }
+#stats { font-size:11px; color:var(--muted); margin-left:auto; }
+#main { display:flex; flex:1; overflow:hidden; }
+#chart-wrap { flex:1; overflow-y:auto; overflow-x:hidden; padding:16px; }
+#chart-wrap::-webkit-scrollbar { width:5px; }
+#chart-wrap::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+svg#shift { display:block; }
+.bar-bg { fill:var(--surface); rx:3; }
+.bar-left  { fill:var(--left);  opacity:.8; cursor:pointer; transition:opacity .15s; }
+.bar-right { fill:var(--right); opacity:.8; cursor:pointer; transition:opacity .15s; }
+.bar-left:hover, .bar-right:hover { opacity:1; }
+.word-label { font-family:'SF Mono','Fira Code',monospace; fill:var(--text); font-size:12px; cursor:pointer; }
+.word-label:hover { fill:#fff; }
+.score-label { font-family:'SF Mono','Fira Code',monospace; fill:var(--muted); font-size:10px; }
+.axis-line { stroke:var(--border); stroke-width:1; }
+.axis-label { font-family:inherit; fill:var(--muted); font-size:11px; }
+#sidebar { width:280px; background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow:hidden; }
+#sb-header { padding:12px 16px 8px; border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+#sb-word { font-size:22px; font-weight:700; padding:12px 16px 0; }
+#sb-owner { font-size:11px; padding:2px 16px 10px; }
+#sb-bars { padding:0 16px 10px; border-bottom:1px solid var(--border); }
+.freq-row { margin-bottom:8px; }
+.freq-label { font-size:10px; color:var(--muted); margin-bottom:3px; }
+.freq-track { background:var(--surface); border-radius:3px; height:6px; overflow:hidden; }
+.freq-fill { height:100%; border-radius:3px; transition:width .4s; }
+#sb-posts-a, #sb-posts-b { padding:8px 16px; flex:1; overflow-y:auto; }
+#sb-posts-a::-webkit-scrollbar, #sb-posts-b::-webkit-scrollbar { width:4px; }
+#sb-posts-a::-webkit-scrollbar-thumb, #sb-posts-b::-webkit-scrollbar-thumb { background:var(--border); }
+.posts-section-title { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+.post-chip { font-size:10px; color:#b0b4cc; line-height:1.5; margin-bottom:4px; padding:4px 6px; background:var(--surface); border-radius:3px; border:1px solid var(--border); cursor:pointer; }
+.post-chip:hover { border-color:var(--neutral); }
+#loading { position:absolute; inset:0; background:rgba(11,13,18,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:13px; color:var(--muted); z-index:10; pointer-events:none; }
+#loading.hidden { display:none; }
+.spin { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--neutral); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>↔ Word Shift</h1>
+  <span class="sub-label left">A:</span>
+  <input type="text" class="left-input" id="sub-a" value="science" placeholder="subreddit A" />
+  <span class="sub-label right">B:</span>
+  <input type="text" class="right-input" id="sub-b" value="technology" placeholder="subreddit B" />
+  <label>Top words:</label>
+  <select id="top-n">
+    <option value="30">30</option>
+    <option value="40" selected>40</option>
+    <option value="60">60</option>
+  </select>
+  <button id="load-btn" onclick="load()">▶ Compare</button>
+  <span id="stats"></span>
+</div>
+<div id="main">
+  <div id="chart-wrap" style="position:relative">
+    <svg id="shift"></svg>
+    <div id="loading" style="position:absolute">
+      <div class="spin"></div>
+      <span id="load-msg">Enter two subreddits and click Compare.</span>
+    </div>
+  </div>
+  <div id="sidebar">
+    <div id="sb-header">Word breakdown</div>
+    <div id="sb-word" style="color:var(--muted);font-size:14px;padding-top:18px">Click a word</div>
+    <div id="sb-owner"></div>
+    <div id="sb-bars"></div>
+    <div id="sb-posts-a"></div>
+    <div id="sb-posts-b"></div>
+  </div>
+</div>
+<script>
+const HEADERS = {"User-Agent":"cs108-lab/1.0"};
+const STOP = new Set([
+  "the","a","an","and","or","but","in","on","of","to","is","it","for","with",
+  "that","this","be","are","was","has","not","by","at","from","as","have","you",
+  "they","we","he","she","i","r","u","amp","just","get","new","like","more",
+  "how","your","about","will","also","can","its","all","been","would","their",
+  "do","so","if","out","one","up","what","no","than","my","into","after","says",
+  "say","over","were","when","who","which","study","found","show","could","using",
+  "used","first","two","may","via","find","than","very","some","here","there",
+]);
+
+let wordDataA = {}, wordDataB = {}, postIndexA = {}, postIndexB = {};
+
+function showLoad(on, msg) {
+  const el = document.getElementById("loading");
+  el.classList.toggle("hidden", !on);
+  if (msg) document.getElementById("load-msg").textContent = msg;
+}
+
+async function fetchSub(sub, indexStore) {
+  try {
+    const target = `https://www.reddit.com/r/${sub}/hot.json?limit=100`;
+    const resp = await fetch(
+      `https://corsproxy.io/?url=${encodeURIComponent(target)}`
+    );
+    const data = await resp.json();
+    const counts = {};
+    (data.data?.children || []).forEach(p => {
+      const title = p.data.title || "";
+      const url   = `https://reddit.com${p.data.permalink}`;
+      const words = [...new Set(
+        title.toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/)
+          .filter(w => w.length >= 4 && !STOP.has(w))
+      )];
+      words.forEach(w => {
+        counts[w] = (counts[w]||0) + 1;
+        if (!indexStore[w]) indexStore[w] = [];
+        if (indexStore[w].length < 4) indexStore[w].push({ title, url });
+      });
+    });
+    return counts;
+  } catch { return {}; }
+}
+
+async function load() {
+  const subA = document.getElementById("sub-a").value.trim();
+  const subB = document.getElementById("sub-b").value.trim();
+  const topN = parseInt(document.getElementById("top-n").value);
+  if (!subA || !subB) return;
+
+  document.getElementById("load-btn").disabled = true;
+  showLoad(true, `Fetching r/${subA}…`);
+  postIndexA = {}; postIndexB = {};
+  wordDataA = await fetchSub(subA, postIndexA);
+  showLoad(true, `Fetching r/${subB}…`);
+  wordDataB = await fetchSub(subB, postIndexB);
+
+  // Compute divergence scores: log-ratio of relative frequencies
+  const totalA = Object.values(wordDataA).reduce((s,v) => s+v, 0) || 1;
+  const totalB = Object.values(wordDataB).reduce((s,v) => s+v, 0) || 1;
+  const allWords = new Set([...Object.keys(wordDataA), ...Object.keys(wordDataB)]);
+
+  const scored = [];
+  allWords.forEach(w => {
+    const fa = (wordDataA[w] || 0) / totalA;
+    const fb = (wordDataB[w] || 0) / totalB;
+    if (fa + fb < 2/Math.max(totalA,totalB)) return; // too rare
+    const score = Math.log((fa + 1e-6) / (fb + 1e-6));
+    scored.push({ word:w, score, fa: wordDataA[w]||0, fb: wordDataB[w]||0 });
+  });
+
+  scored.sort((a,b) => b.score - a.score);
+  const topHalf = Math.floor(topN / 2);
+  const midN    = 8;
+
+  // Words closest to score=0 — genuinely shared vocabulary
+  const middle = scored
+    .slice(topHalf, scored.length - topHalf)   // exclude the extremes
+    .sort((a, b) => Math.abs(a.score) - Math.abs(b.score))
+    .slice(0, midN)
+    .sort((a, b) => b.score - a.score);        // re-sort by score for display
+
+  const displayed = [
+    ...scored.slice(0, topHalf),               // most A-dominant
+    { divider: true, label: "── shared vocabulary ──" },
+    ...middle,
+    { divider: true, label: "── most B-dominant ──" },
+    ...scored.slice(-topHalf).reverse(),
+  ];
+
+  document.getElementById("stats").textContent =
+    `${allWords.size} unique words · ${topHalf} A-dominant · ${midN} shared · ${topHalf} B-dominant`;
+
+  renderShift(displayed, subA, subB);
+  showLoad(false);
+  document.getElementById("load-btn").disabled = false;
+}
+
+function renderShift(data, subA, subB) {
+  const wrap = document.getElementById("chart-wrap");
+  const W    = wrap.clientWidth - 32;
+  const ROW  = 28;
+  const DIVIDER_H = 22;
+  const H    = data.reduce((s, d) => s + (d.divider ? DIVIDER_H : ROW), 0) + 80;
+  const midX = W / 2;
+  const barMaxW = midX - 120;
+
+  const maxScore = d3.max(data.filter(d => !d.divider), d => Math.abs(d.score)) || 1;
+  const barScale = d3.scaleLinear([0, maxScore], [0, barMaxW]);
+
+  const svg = d3.select("#shift")
+    .attr("width", W).attr("height", H);
+  svg.selectAll("*").remove();
+
+  // Center axis
+  svg.append("line").attr("class","axis-line")
+    .attr("x1", midX).attr("y1", 40)
+    .attr("x2", midX).attr("y2", H - 20);
+
+  // Column headers
+  svg.append("text").attr("class","axis-label")
+    .attr("x", midX - 20).attr("y", 20)
+    .attr("text-anchor","end")
+    .attr("fill","var(--left)")
+    .text(`← r/${subA}`);
+  svg.append("text").attr("class","axis-label")
+    .attr("x", midX + 20).attr("y", 20)
+    .attr("text-anchor","start")
+    .attr("fill","var(--right)")
+    .text(`r/${subB} →`);
+
+  let y = 40;
+  data.forEach(d => {
+    if (d.divider) {
+      svg.append("text")
+        .attr("x", midX).attr("y", y + DIVIDER_H / 2 + 4)
+        .attr("text-anchor","middle")
+        .attr("font-size", 10).attr("font-family","inherit")
+        .attr("fill","rgba(255,255,255,0.2)")
+        .attr("letter-spacing","0.08em")
+        .text(d.label);
+      y += DIVIDER_H;
+      return;
+    }
+
+    const bw      = barScale(Math.abs(d.score));
+    const isLeft   = d.score > 0;
+    const isShared = Math.abs(d.score) < maxScore * 0.25;
+    const barColor = isShared ? "var(--neutral)" : (isLeft ? "var(--left)" : "var(--right)");
+
+    svg.append("rect")
+      .attr("class", isLeft ? "bar-left" : "bar-right")
+      .attr("x",     isLeft ? midX - bw : midX)
+      .attr("y",     y + 4)
+      .attr("width", Math.max(bw, 1))
+      .attr("height", ROW - 8)
+      .attr("rx", 2)
+      .attr("fill", barColor)
+      .on("click", () => showWord(d, subA, subB));
+
+    svg.append("text")
+      .attr("class","word-label")
+      .attr("x", midX).attr("y", y + ROW / 2 + 1)
+      .attr("text-anchor","middle").attr("dominant-baseline","middle")
+      .attr("fill", isShared ? "rgba(255,255,255,0.45)" : "var(--text)")
+      .text(d.word)
+      .on("click", () => showWord(d, subA, subB));
+
+    if (d.fa > 0) {
+      svg.append("text").attr("class","score-label")
+        .attr("x", midX - bw - 4).attr("y", y + ROW / 2 + 1)
+        .attr("text-anchor","end").attr("dominant-baseline","middle")
+        .text(d.fa);
+    }
+    if (d.fb > 0) {
+      svg.append("text").attr("class","score-label")
+        .attr("x", midX + bw + 4).attr("y", y + ROW / 2 + 1)
+        .attr("text-anchor","start").attr("dominant-baseline","middle")
+        .text(d.fb);
+    }
+
+    y += ROW;
+  });
+}
+
+function showWord(d, subA, subB) {
+  const isLeft = d.score > 0;
+  document.getElementById("sb-word").textContent = d.word;
+  document.getElementById("sb-word").style.color = isLeft ? "var(--left)" : "var(--right)";
+  document.getElementById("sb-owner").innerHTML =
+    `<span style="color:${isLeft?'var(--left)':'var(--right)'}">More common in r/${isLeft?subA:subB}</span>`;
+
+  const maxF = Math.max(d.fa, d.fb) || 1;
+  document.getElementById("sb-bars").innerHTML = `
+    <div class="freq-row">
+      <div class="freq-label">r/${subA} (${d.fa} posts)</div>
+      <div class="freq-track"><div class="freq-fill" style="width:${(d.fa/maxF*100).toFixed(0)}%;background:var(--left)"></div></div>
+    </div>
+    <div class="freq-row">
+      <div class="freq-label">r/${subB} (${d.fb} posts)</div>
+      <div class="freq-track"><div class="freq-fill" style="width:${(d.fb/maxF*100).toFixed(0)}%;background:var(--right)"></div></div>
+    </div>
+  `;
+
+  function renderPosts(container, index, word, color) {
+    const posts = index[word] || [];
+    container.innerHTML = "";
+    if (!posts.length) return;
+    const title = document.createElement("div");
+    title.className = "posts-section-title";
+    title.style.color = color;
+    title.textContent = `Posts from r/${word === d.word ? (color === "var(--left)" ? subA : subB) : "?"}`;
+    container.appendChild(title);
+    posts.forEach(p => {
+      const el = document.createElement("div");
+      el.className = "post-chip";
+      el.textContent = p.title.length > 70 ? p.title.slice(0,68)+"…" : p.title;
+      el.onclick = () => window.open(p.url,"_blank");
+      container.appendChild(el);
+    });
+  }
+
+  renderPosts(document.getElementById("sb-posts-a"), postIndexA, d.word, "var(--left)");
+  renderPosts(document.getElementById("sb-posts-b"), postIndexB, d.word, "var(--right)");
+}
+
+window.addEventListener("load", () => showLoad(true, "Enter two subreddits and click Compare."));
+</script>
+</body>
+</html>

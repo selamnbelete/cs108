@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Semantic Field Mapper</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0b0d12; --bg2:#11141c; --surface:#181c28;
+  --border:rgba(255,255,255,0.08); --text:#e2e4ec; --muted:#6b7080;
+  --a:#f97316; --b:#60a5fa; --both:#a78bfa;
+}
+body { background:var(--bg); color:var(--text); font-family:'SF Mono','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+#toolbar h1 { font-size:13px; font-weight:600; color:var(--both); letter-spacing:.08em; text-transform:uppercase; }
+.sub-badge { font-size:12px; font-weight:700; padding:3px 8px; border-radius:4px; }
+.sub-badge.a { color:var(--a); background:rgba(249,115,22,.12); }
+.sub-badge.b { color:var(--b); background:rgba(96,165,250,.12); }
+input[type=text] { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; outline:none; width:140px; }
+input.a:focus { border-color:var(--a); }
+input.b:focus { border-color:var(--b); }
+button { background:var(--both); border:none; border-radius:6px; color:#0b0d12; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:.05em; padding:6px 14px; text-transform:uppercase; }
+button:hover { opacity:.85; } button:disabled { opacity:.3; cursor:not-allowed; }
+#stats { font-size:11px; color:var(--muted); margin-left:auto; }
+#main { display:flex; flex:1; overflow:hidden; }
+#chart-wrap { flex:1; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+svg#radar { display:block; }
+#sidebar { width:300px; background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow:hidden; }
+#sb-header { padding:12px 16px 8px; border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+#sb-field { font-size:20px; font-weight:700; padding:12px 16px 0; }
+#sb-desc { font-size:11px; color:var(--muted); padding:3px 16px 8px; line-height:1.6; border-bottom:1px solid var(--border); }
+#sb-bars { padding:10px 16px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.bar-label { font-size:10px; color:var(--muted); margin-bottom:3px; }
+.bar-track { background:var(--surface); border-radius:3px; height:6px; overflow:hidden; margin-bottom:8px; }
+.bar-fill { height:100%; border-radius:3px; transition:width .4s; }
+#sb-words { flex:1; overflow-y:auto; padding:10px 16px; }
+#sb-words::-webkit-scrollbar { width:4px; }
+#sb-words::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.words-section { margin-bottom:12px; }
+.words-title { font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+.word-chips { display:flex; flex-wrap:wrap; gap:4px; }
+.chip { font-size:10px; padding:2px 7px; border-radius:3px; background:var(--surface); border:1px solid var(--border); }
+.chip.a { border-color:rgba(249,115,22,.4); color:var(--a); }
+.chip.b { border-color:rgba(96,165,250,.4); color:var(--b); }
+.chip.both { border-color:rgba(167,139,250,.4); color:var(--both); }
+#loading { position:absolute; inset:0; background:rgba(11,13,18,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:13px; color:var(--muted); z-index:10; }
+#loading.hidden { display:none; }
+.spin { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--both); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.radar-area { fill-opacity:0.18; cursor:pointer; transition:fill-opacity .2s; }
+.radar-area:hover { fill-opacity:0.35; }
+.radar-area.dimmed { fill-opacity:0.05; }
+.radar-stroke { fill:none; stroke-width:2; pointer-events:none; }
+.radar-axis-line { stroke:rgba(255,255,255,0.08); }
+.radar-ring { fill:none; stroke:rgba(255,255,255,0.06); }
+.radar-axis-label { font-family:inherit; cursor:pointer; }
+.radar-axis-label:hover { opacity:.7; }
+.radar-dot { cursor:pointer; }
+.radar-dot:hover { r:7; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>🕸 Semantic Fields</h1>
+  <span class="sub-badge a">A:</span>
+  <input type="text" class="a" id="sub-a" value="science" placeholder="subreddit A" />
+  <span class="sub-badge b">B:</span>
+  <input type="text" class="b" id="sub-b" value="relationships" placeholder="subreddit B" />
+  <button id="load-btn" onclick="load()">▶ Compare</button>
+  <span id="stats"></span>
+</div>
+<div id="main">
+  <div id="chart-wrap">
+    <svg id="radar"></svg>
+    <div id="loading"><div class="spin"></div><span id="load-msg">Enter two subreddits and click Compare.</span></div>
+  </div>
+  <div id="sidebar">
+    <div id="sb-header">Field details</div>
+    <div id="sb-field" style="color:var(--muted);font-size:14px;padding-top:16px">Click a field</div>
+    <div id="sb-desc"></div>
+    <div id="sb-bars"></div>
+    <div id="sb-words">
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">Click any field label or polygon region to see which words from each subreddit triggered it.</p>
+    </div>
+  </div>
+</div>
+<script>
+// ── Semantic field definitions ───────────────────────────────────────────────
+// Each field: { label, emoji, description, words[] }
+const FIELDS = [
+  {
+    id:"conflict", label:"Conflict", emoji:"⚔️",
+    desc:"War, violence, opposition, and struggle.",
+    words:["war","attack","fight","kill","battle","conflict","violence","bomb","shoot",
+           "force","army","military","weapon","threat","coup","clash","strike","protest",
+           "rebel","siege","assault","invasion","murder","crime","arrest","police",
+           "prison","death","dead","dying","shooting","explosion","terrorism","hostage"]
+  },
+  {
+    id:"body", label:"Body & Health", emoji:"🫀",
+    desc:"Physical health, medicine, biology, and the human body.",
+    words:["health","body","brain","heart","blood","cell","gene","cancer","drug","pain",
+           "doctor","patient","hospital","disease","virus","immune","skin","muscle",
+           "bone","death","mental","sleep","food","diet","weight","exercise","vaccine",
+           "surgery","treatment","therapy","depression","anxiety","stress","birth","death"]
+  },
+  {
+    id:"money", label:"Money & Economy", emoji:"💰",
+    desc:"Finance, markets, wealth, prices, and economic systems.",
+    words:["money","price","cost","market","stock","bank","invest","debt","economy",
+           "trade","profit","loss","fund","wealth","rich","poor","salary","wage","rent",
+           "inflation","recession","growth","gdp","budget","tax","spend","earn","save",
+           "crypto","bitcoin","dollar","million","billion","startup","company","revenue"]
+  },
+  {
+    id:"tech", label:"Technology", emoji:"💻",
+    desc:"Computers, software, AI, and digital systems.",
+    words:["tech","software","code","data","computer","internet","phone","digital",
+           "online","network","system","program","algorithm","artificial","intelligence",
+           "machine","robot","device","chip","hardware","server","cloud","hack","security",
+           "privacy","platform","app","website","game","video","model","neural","training"]
+  },
+  {
+    id:"nature", label:"Nature & Environment", emoji:"🌿",
+    desc:"Ecology, climate, animals, and the natural world.",
+    words:["climate","environment","nature","planet","earth","animal","species","forest",
+           "ocean","water","air","carbon","energy","solar","wind","plant","tree","wildlife",
+           "pollution","warming","weather","storm","fire","flood","drought","extinction",
+           "ecosystem","biodiversity","conservation","fossil","fuel","emission","renewable"]
+  },
+  {
+    id:"politics", label:"Politics & Power", emoji:"🏛️",
+    desc:"Government, elections, policy, and political institutions.",
+    words:["government","president","election","vote","party","policy","democracy","law",
+           "congress","senate","court","state","nation","country","leader","minister",
+           "parliament","bill","rights","freedom","power","ruling","opposition","reform",
+           "constitution","treaty","sanction","diplomat","foreign","domestic","federal",
+           "justice","judge","supreme","republican","democrat","liberal","conservative"]
+  },
+  {
+    id:"emotion", label:"Emotion & Self", emoji:"💭",
+    desc:"Feelings, identity, relationships, and inner life.",
+    words:["feel","love","hate","happy","sad","angry","fear","hope","trust","shame",
+           "guilt","pride","lonely","friend","family","relationship","partner","heart",
+           "mind","soul","life","dream","memory","thought","believe","know","want",
+           "need","hurt","help","support","care","miss","lose","find","change","grow"]
+  },
+  {
+    id:"science", label:"Science & Discovery", emoji:"🔬",
+    desc:"Research, experiments, findings, and academic knowledge.",
+    words:["research","study","science","theory","evidence","experiment","discovery",
+           "found","result","analysis","data","test","model","publish","journal","paper",
+           "university","professor","scientist","physics","chemistry","biology","space",
+           "star","planet","particle","quantum","evolution","genetics","neuroscience",
+           "psychology","archaeology","fossil","observation","hypothesis","proof"]
+  },
+  {
+    id:"time", label:"Time & Change", emoji:"⏳",
+    desc:"Temporal references, history, and transformation.",
+    words:["year","years","time","day","week","month","today","yesterday","future","past",
+           "history","century","decade","ancient","modern","new","old","change","begin",
+           "start","end","first","last","since","before","after","during","early","late",
+           "soon","still","already","never","always","once","again","finally","recently"]
+  },
+  {
+    id:"society", label:"Society & Culture", emoji:"🌐",
+    desc:"Social structures, identity, culture, and community.",
+    words:["people","society","community","culture","race","gender","class","religion",
+           "education","school","student","teacher","media","news","book","art","music",
+           "film","language","tradition","identity","diversity","equality","privilege",
+           "bias","discrimination","social","public","community","movement","protest",
+           "generation","youth","children","family","marriage","immigration","race"]
+  },
+  {
+    id:"place", label:"Place & Geography", emoji:"🗺️",
+    desc:"Countries, cities, regions, and spatial references.",
+    words:["city","country","world","global","local","region","state","town","area",
+           "place","location","north","south","east","west","border","land","territory",
+           "america","europe","asia","africa","china","russia","india","united","states",
+           "kingdom","australia","canada","middle","east","west","africa","latin",
+           "japan","korea","iran","israel","ukraine","mexico","brazil","germany","france"]
+  },
+  {
+    id:"work", label:"Work & Production", emoji:"🔧",
+    desc:"Labor, industry, jobs, and making things.",
+    words:["work","job","worker","company","industry","build","make","create","produce",
+           "factory","business","employee","boss","career","profession","skill","train",
+           "hire","fire","strike","union","wage","labor","task","project","team","manage",
+           "lead","design","engineer","develop","launch","release","ship","deliver","test"]
+  },
+];
+
+const HEADERS = { "User-Agent":"cs108-lab/1.0" };
+const STOP = new Set([
+  "the","a","an","and","or","but","in","on","of","to","is","it","for","with",
+  "that","this","be","are","was","has","not","by","at","from","as","have","you",
+  "they","we","he","she","i","r","u","amp","just","get","new","like","more",
+  "how","your","about","will","also","can","its","all","been","would","their",
+  "do","so","if","out","one","up","what","no","than","my","into","after","says",
+  "say","over","were","when","who","which","could","using","used","two","may","via",
+]);
+
+// Build reverse lookup: word → [fieldId]
+const WORD_TO_FIELDS = {};
+FIELDS.forEach(f => {
+  f.words.forEach(w => {
+    if (!WORD_TO_FIELDS[w]) WORD_TO_FIELDS[w] = [];
+    WORD_TO_FIELDS[w].push(f.id);
+  });
+});
+
+let scoresA = {}, scoresB = {};
+let hitsA   = {}, hitsB   = {};   // fieldId → [matched words]
+let subA = "", subB = "";
+let selectedField = null;
+
+function showLoad(on, msg) {
+  document.getElementById("loading").classList.toggle("hidden", !on);
+  if (msg) document.getElementById("load-msg").textContent = msg;
+}
+
+async function fetchAndScore(sub) {
+  const target = `https://www.reddit.com/r/${sub}/hot.json?limit=100`;
+  const resp = await fetch(
+    `https://corsproxy.io/?url=${encodeURIComponent(target)}`
+  );
+  const data = await resp.json();
+  const posts = (data.data?.children || []).map(p => p.data.title || "");
+
+  const fieldCounts = {};
+  const fieldHits   = {};
+  FIELDS.forEach(f => { fieldCounts[f.id] = 0; fieldHits[f.id] = new Set(); });
+
+  posts.forEach(title => {
+    const words = title.toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/)
+      .filter(w => w.length >= 3 && !STOP.has(w));
+    words.forEach(w => {
+      const fields = WORD_TO_FIELDS[w];
+      if (fields) fields.forEach(fid => {
+        fieldCounts[fid]++;
+        fieldHits[fid].add(w);
+      });
+    });
+  });
+
+  // Normalize by total words across all fields so profiles sum to 1
+  const total = Object.values(fieldCounts).reduce((s,v) => s+v, 0) || 1;
+  const normalized = {};
+  FIELDS.forEach(f => { normalized[f.id] = fieldCounts[f.id] / total; });
+
+  return { scores: normalized, hits: fieldHits, postCount: posts.length };
+}
+
+async function load() {
+  subA = document.getElementById("sub-a").value.trim();
+  subB = document.getElementById("sub-b").value.trim();
+  if (!subA || !subB) return;
+
+  document.getElementById("load-btn").disabled = true;
+  showLoad(true, `Fetching r/${subA}…`);
+
+  try {
+    const resA = await fetchAndScore(subA);
+    showLoad(true, `Fetching r/${subB}…`);
+    await new Promise(r => setTimeout(r, 150));
+    const resB = await fetchAndScore(subB);
+
+    scoresA = resA.scores;
+    scoresB = resB.scores;
+    hitsA   = resA.hits;
+    hitsB   = resB.hits;
+
+    document.getElementById("stats").textContent =
+      `${resA.postCount} + ${resB.postCount} posts · ${FIELDS.length} semantic fields`;
+
+    selectedField = null;
+    renderRadar();
+    clearSidebar();
+    showLoad(false);
+  } catch(e) {
+    showLoad(true, "Fetch error: " + e.message);
+  }
+  document.getElementById("load-btn").disabled = false;
+}
+
+function renderRadar() {
+  const wrap = document.getElementById("chart-wrap");
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const size  = Math.min(W - 40, H - 40, 560);
+  const cx    = W / 2, cy = H / 2;
+  const R     = size / 2 - 60;   // outer radius
+  const N     = FIELDS.length;
+  const angle = i => (i / N) * 2 * Math.PI - Math.PI / 2;
+
+  const svg = d3.select("#radar").attr("width", W).attr("height", H);
+  svg.selectAll("*").remove();
+
+  const g = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+
+  // Max value for scale
+  const allVals = FIELDS.flatMap(f => [scoresA[f.id]||0, scoresB[f.id]||0]);
+  const maxVal  = d3.max(allVals) || 0.01;
+  const rScale  = d3.scaleLinear([0, maxVal], [0, R]);
+
+  // Background rings
+  [0.25, 0.5, 0.75, 1].forEach(t => {
+    g.append("circle").attr("class","radar-ring").attr("r", R * t);
+  });
+
+  // Axis spokes
+  FIELDS.forEach((f, i) => {
+    const a  = angle(i);
+    const x2 = Math.cos(a) * R, y2 = Math.sin(a) * R;
+    g.append("line").attr("class","radar-axis-line")
+      .attr("x2", x2).attr("y2", y2);
+  });
+
+  // Axis labels
+  FIELDS.forEach((f, i) => {
+    const a   = angle(i);
+    const lR  = R + 28;
+    const lx  = Math.cos(a) * lR;
+    const ly  = Math.sin(a) * lR;
+    const anchor = Math.abs(lx) < 10 ? "middle" : lx > 0 ? "start" : "end";
+
+    const label = g.append("text")
+      .attr("class","radar-axis-label")
+      .attr("x", lx).attr("y", ly + 4)
+      .attr("text-anchor", anchor)
+      .attr("dominant-baseline","middle")
+      .attr("font-size", 11)
+      .attr("font-family","inherit")
+      .attr("fill", selectedField === f.id ? "#fff" : "var(--muted)")
+      .text(`${f.emoji} ${f.label}`)
+      .on("click", () => selectField(f.id));
+
+    // Small value annotations
+    const va = Math.max(scoresA[f.id]||0, scoresB[f.id]||0);
+    if (va > maxVal * 0.15) {
+      g.append("text")
+        .attr("x", Math.cos(a) * (rScale(va) + 8))
+        .attr("y", Math.sin(a) * (rScale(va) + 8))
+        .attr("text-anchor","middle").attr("dominant-baseline","middle")
+        .attr("font-size", 9).attr("fill","rgba(255,255,255,0.3)")
+        .attr("pointer-events","none")
+        .text((va * 100).toFixed(1) + "%");
+    }
+  });
+
+  // Polygon builder
+  function polyPoints(scores) {
+    return FIELDS.map((f, i) => {
+      const a = angle(i);
+      const r = rScale(scores[f.id] || 0);
+      return [Math.cos(a) * r, Math.sin(a) * r];
+    });
+  }
+
+  const line = d3.line().x(d=>d[0]).y(d=>d[1]).curve(d3.curveLinearClosed);
+  const ptsA = polyPoints(scoresA);
+  const ptsB = polyPoints(scoresB);
+
+  // A polygon
+  g.append("path").attr("class","radar-area")
+    .attr("d", line(ptsA)).attr("fill","var(--a)").attr("stroke","none")
+    .on("click", () => { selectedField = null; clearSidebar(); renderRadar(); });
+
+  g.append("path").attr("class","radar-stroke")
+    .attr("d", line(ptsA)).attr("stroke","var(--a)").attr("opacity",.9);
+
+  // B polygon
+  g.append("path").attr("class","radar-area")
+    .attr("d", line(ptsB)).attr("fill","var(--b)").attr("stroke","none")
+    .on("click", () => { selectedField = null; clearSidebar(); renderRadar(); });
+
+  g.append("path").attr("class","radar-stroke")
+    .attr("d", line(ptsB)).attr("stroke","var(--b)").attr("opacity",.9);
+
+  // Dots on each axis for both subs — clickable
+  FIELDS.forEach((f, i) => {
+    const a = angle(i);
+    [[scoresA, "var(--a)", "a"], [scoresB, "var(--b)", "b"]].forEach(([scores, color, side]) => {
+      const r = rScale(scores[f.id] || 0);
+      g.append("circle").attr("class","radar-dot")
+        .attr("cx", Math.cos(a) * r).attr("cy", Math.sin(a) * r)
+        .attr("r", 4).attr("fill", color).attr("opacity",.9)
+        .on("click", () => selectField(f.id));
+    });
+  });
+
+  // Legend
+  const leg = svg.append("g").attr("transform",`translate(16,${H-44})`);
+  [[`r/${subA}`, "var(--a)"], [`r/${subB}`, "var(--b)"]].forEach(([label, color], i) => {
+    const x = i * 130;
+    leg.append("rect").attr("x",x).attr("width",12).attr("height",12)
+      .attr("fill",color).attr("opacity",.5).attr("rx",2);
+    leg.append("text").attr("x", x+16).attr("y",10)
+      .attr("font-size",11).attr("font-family","inherit")
+      .attr("fill","var(--muted)").text(label);
+  });
+}
+
+function selectField(fieldId) {
+  selectedField = fieldId;
+  renderRadar();
+
+  const f = FIELDS.find(f => f.id === fieldId);
+  const sA = ((scoresA[fieldId]||0) * 100).toFixed(2);
+  const sB = ((scoresB[fieldId]||0) * 100).toFixed(2);
+  const maxS = Math.max(scoresA[fieldId]||0, scoresB[fieldId]||0) || 0.01;
+
+  document.getElementById("sb-field").textContent = `${f.emoji} ${f.label}`;
+  document.getElementById("sb-field").style.color = "var(--text)";
+  document.getElementById("sb-desc").textContent  = f.desc;
+
+  document.getElementById("sb-bars").innerHTML = `
+    <div class="bar-label" style="color:var(--a)">r/${subA} — ${sA}% of field words</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${((scoresA[fieldId]||0)/maxS*100).toFixed(0)}%;background:var(--a)"></div></div>
+    <div class="bar-label" style="color:var(--b)">r/${subB} — ${sB}% of field words</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${((scoresB[fieldId]||0)/maxS*100).toFixed(0)}%;background:var(--b)"></div></div>
+  `;
+
+  const wordsEl = document.getElementById("sb-words");
+  wordsEl.innerHTML = "";
+
+  const wA = [...(hitsA[fieldId] || [])].sort();
+  const wB = [...(hitsB[fieldId] || [])].sort();
+  const onlyA  = wA.filter(w => !wB.includes(w));
+  const onlyB  = wB.filter(w => !wA.includes(w));
+  const shared = wA.filter(w =>  wB.includes(w));
+
+  function section(title, words, cls) {
+    if (!words.length) return;
+    const sec = document.createElement("div");
+    sec.className = "words-section";
+    sec.innerHTML = `<div class="words-title" style="color:var(--${cls==='both'?'both':cls})">${title} (${words.length})</div>`;
+    const chips = document.createElement("div");
+    chips.className = "word-chips";
+    words.forEach(w => {
+      const chip = document.createElement("span");
+      chip.className = `chip ${cls}`;
+      chip.textContent = w;
+      chips.appendChild(chip);
+    });
+    sec.appendChild(chips);
+    wordsEl.appendChild(sec);
+  }
+
+  section(`Only in r/${subA}`, onlyA, "a");
+  section(`Only in r/${subB}`, onlyB, "b");
+  section("Shared", shared, "both");
+
+  if (!onlyA.length && !onlyB.length && !shared.length) {
+    wordsEl.innerHTML = `<p style="font-size:12px;color:var(--muted);margin-top:6px">No matching words found in either subreddit's hot posts for this field.</p>`;
+  }
+}
+
+function clearSidebar() {
+  document.getElementById("sb-field").textContent = "Click a field";
+  document.getElementById("sb-field").style.color = "var(--muted)";
+  document.getElementById("sb-desc").textContent  = "";
+  document.getElementById("sb-bars").innerHTML    = "";
+  document.getElementById("sb-words").innerHTML   =
+    `<p style="font-size:12px;color:var(--muted);margin-top:6px">Click any field label or polygon region to see which words from each subreddit triggered it.</p>`;
+}
+
+window.addEventListener("load", () => showLoad(true, "Enter two subreddits and click Compare."));
+window.addEventListener("resize", () => { if (Object.keys(scoresA).length) renderRadar(); });
+</script>
+</body>
+</html>

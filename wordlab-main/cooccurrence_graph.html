@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Word Co-occurrence Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0b0d12; --bg2:#11141c; --surface:#181c28;
+  --border:rgba(255,255,255,0.07); --text:#e2e4ec; --muted:#6b7080;
+  --accent:#60a5fa; --accent2:#a78bfa; --hot:#f97316;
+}
+body { background:var(--bg); color:var(--text); font-family:'SF Mono','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+#toolbar h1 { font-size:13px; font-weight:600; color:var(--accent); letter-spacing:.08em; text-transform:uppercase; }
+input[type=text] { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; outline:none; width:150px; }
+input[type=text]:focus { border-color:var(--accent); }
+button { background:var(--accent); border:none; border-radius:6px; color:#0b0d12; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:.05em; padding:6px 14px; text-transform:uppercase; }
+button.sec { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+button:hover { opacity:.85; } button:disabled { opacity:.3; cursor:not-allowed; }
+select { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:12px; padding:5px 8px; outline:none; }
+label { font-size:12px; color:var(--muted); }
+#stats { font-size:11px; color:var(--muted); margin-left:auto; }
+#main { display:flex; flex:1; overflow:hidden; }
+#canvas-wrap { flex:1; position:relative; overflow:hidden; }
+svg#graph { width:100%; height:100%; }
+.link { stroke:rgba(255,255,255,0.12); fill:none; }
+.link.highlight { stroke:var(--hot); }
+.node-circle { cursor:pointer; }
+.node-circle:hover { filter:brightness(1.4); }
+.node-circle.selected { stroke:#fff; stroke-width:2; }
+.node-label { pointer-events:none; text-anchor:middle; dominant-baseline:central; font-family:'SF Mono','Fira Code',monospace; }
+#sidebar { width:280px; background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow:hidden; }
+#sb-header { padding:12px 16px 8px; border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+#sb-word { font-size:22px; font-weight:700; padding:12px 16px 0; color:var(--accent); }
+#sb-freq { font-size:11px; color:var(--muted); padding:2px 16px 8px; }
+#sb-neighbors { flex:1; overflow-y:auto; padding:8px 16px; }
+#sb-neighbors::-webkit-scrollbar { width:4px; }
+#sb-neighbors::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.neighbor-row { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+.n-word { font-size:12px; color:var(--text); width:100px; flex-shrink:0; }
+.n-bar-track { flex:1; background:var(--surface); border-radius:2px; height:5px; overflow:hidden; }
+.n-bar-fill { height:100%; border-radius:2px; background:var(--accent2); }
+.n-count { font-size:10px; color:var(--muted); width:20px; text-align:right; flex-shrink:0; }
+#sb-posts { padding:10px 16px; border-top:1px solid var(--border); flex-shrink:0; }
+#sb-posts-title { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+.post-snippet { font-size:11px; color:#b0b4cc; line-height:1.5; margin-bottom:5px; padding:6px 8px; background:var(--surface); border-radius:4px; border:1px solid var(--border); cursor:pointer; }
+.post-snippet:hover { border-color:var(--accent); }
+#loading { position:absolute; inset:0; background:rgba(11,13,18,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:13px; color:var(--muted); z-index:10; }
+#loading.hidden { display:none; }
+.spin { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>🕸 Co-occurrence Graph</h1>
+  <label>r/</label>
+  <input id="sub-input" type="text" value="science" />
+  <label>Min co-occur:</label>
+  <select id="min-cooc">
+    <option value="2" selected>2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+  </select>
+  <label>Top words:</label>
+  <select id="top-n">
+    <option value="40">40</option>
+    <option value="60" selected>60</option>
+    <option value="80">80</option>
+  </select>
+  <button id="load-btn" onclick="load()">▶ Build Graph</button>
+  <button class="sec" onclick="resetSim()">Reset</button>
+  <span id="stats"></span>
+</div>
+<div id="main">
+  <div id="canvas-wrap">
+    <svg id="graph"></svg>
+    <div id="loading">
+      <div class="spin"></div>
+      <span id="load-msg">Enter a subreddit and click Build Graph.</span>
+    </div>
+  </div>
+  <div id="sidebar">
+    <div id="sb-header">Word details</div>
+    <div id="sb-word" style="color:var(--muted);font-size:14px;padding-top:18px">Click a node</div>
+    <div id="sb-freq"></div>
+    <div id="sb-neighbors">
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">Select a word to see its co-occurring neighbors ranked by frequency.</p>
+    </div>
+    <div id="sb-posts">
+      <div id="sb-posts-title" style="display:none">Example posts</div>
+      <div id="sb-posts-list"></div>
+    </div>
+  </div>
+</div>
+<script>
+const STOP = new Set([
+  "the","a","an","and","or","but","in","on","of","to","is","it","for","with",
+  "that","this","be","are","was","has","not","by","at","from","as","have","you",
+  "they","we","he","she","i","r","u","amp","just","get","new","like","more",
+  "how","your","about","will","also","can","its","all","been","would","their",
+  "do","so","if","out","one","up","what","no","than","my","into","after","says",
+  "say","over","were","about","when","who","which","study","found","show","could",
+  "using","used","first","two","may","new","more","than","via","after","find",
+]);
+
+let simulation, svg, gLinks, gNodes;
+let nodes = [], links = [];
+let postIndex = {};
+
+function showLoad(on, msg) {
+  const el = document.getElementById("loading");
+  el.classList.toggle("hidden", !on);
+  if (msg) document.getElementById("load-msg").textContent = msg;
+}
+
+async function load() {
+  const sub   = document.getElementById("sub-input").value.trim();
+  const minCo = parseInt(document.getElementById("min-cooc").value);
+  const topN  = parseInt(document.getElementById("top-n").value);
+  if (!sub) return;
+
+  document.getElementById("load-btn").disabled = true;
+  showLoad(true, `Fetching r/${sub}…`);
+
+  const posts = await fetchSubreddit(sub);
+  if (!posts.length) {
+    showLoad(true, "No posts found or fetch failed.");
+    document.getElementById("load-btn").disabled = false;
+    return;
+  }
+
+  showLoad(true, "Building co-occurrence graph…");
+  const { nodeArr, linkArr } = buildGraph(posts, minCo, topN);
+  nodes = nodeArr; links = linkArr;
+
+  document.getElementById("stats").textContent =
+    `${nodes.length} words · ${links.length} edges · ${posts.length} posts`;
+
+  renderGraph();
+  showLoad(false);
+  document.getElementById("load-btn").disabled = false;
+}
+
+async function fetchSubreddit(sub) {
+  try {
+    const target = `https://www.reddit.com/r/${sub}/hot.json?limit=100`;
+    const resp = await fetch(
+      `https://corsproxy.io/?url=${encodeURIComponent(target)}`
+    );
+    const data = await resp.json();
+    return (data.data?.children || []).map(p => ({
+      title: p.data.title || "",
+      url:   `https://reddit.com${p.data.permalink}`,
+      score: p.data.score || 0,
+    }));
+  } catch { return []; }
+}
+
+function tokenize(text) {
+  return text.toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !STOP.has(w));
+}
+
+function buildGraph(posts, minCo, topN) {
+  const freq = {};
+  const cooc = {};
+  postIndex  = {};
+
+  posts.forEach(p => {
+    const words = [...new Set(tokenize(p.title))];
+    words.forEach(w => {
+      freq[w] = (freq[w] || 0) + 1;
+      if (!postIndex[w]) postIndex[w] = [];
+      if (postIndex[w].length < 5) postIndex[w].push(p);
+    });
+    for (let i = 0; i < words.length; i++) {
+      for (let j = i + 1; j < words.length; j++) {
+        const key = [words[i], words[j]].sort().join("|||");
+        cooc[key] = (cooc[key] || 0) + 1;
+      }
+    }
+  });
+
+  const topWords = new Set(
+    Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, topN).map(([w]) => w)
+  );
+
+  const nodeArr = [...topWords].map(id => ({ id, freq: freq[id] }));
+  const linkArr = Object.entries(cooc)
+    .filter(([key, cnt]) => {
+      const [a, b] = key.split("|||");
+      return cnt >= minCo && topWords.has(a) && topWords.has(b);
+    })
+    .map(([key, cnt]) => {
+      const [source, target] = key.split("|||");
+      return { source, target, weight: cnt };
+    });
+
+  return { nodeArr, linkArr };
+}
+
+function renderGraph() {
+  const svgEl = document.getElementById("graph");
+  svgEl.innerHTML = "";
+  svg = d3.select(svgEl);
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+
+  const zoom = d3.zoom().scaleExtent([0.2, 4])
+    .on("zoom", e => g.attr("transform", e.transform));
+  svg.call(zoom);
+
+  const g = svg.append("g");
+  gLinks = g.append("g");
+  gNodes = g.append("g");
+
+  const maxFreq  = d3.max(nodes, d => d.freq) || 1;
+  const maxWeight= d3.max(links, d => d.weight) || 1;
+  const rScale   = d3.scaleSqrt([1, maxFreq], [5, 22]);
+  const colorScale = d3.scaleSequential(d3.interpolateCool)
+    .domain([0, maxFreq]);
+  const strokeScale = d3.scaleLinear([1, maxWeight], [0.5, 4]);
+
+  const linkSel = gLinks.selectAll("line")
+    .data(links, d => `${d.source.id||d.source}-${d.target.id||d.target}`)
+    .join("line")
+    .attr("class","link")
+    .attr("stroke-width", d => strokeScale(d.weight));
+
+  const nodeG = gNodes.selectAll("g")
+    .data(nodes, d => d.id)
+    .join("g")
+    .attr("class","node-g")
+    .call(d3.drag()
+      .on("start", (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag",  (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on("end",   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .on("click", (e, d) => selectNode(d, linkSel, rScale, colorScale));
+
+  nodeG.append("circle")
+    .attr("class","node-circle")
+    .attr("r",   d => rScale(d.freq))
+    .attr("fill", d => colorScale(d.freq))
+    .attr("opacity", 0.85);
+
+  nodeG.append("text")
+    .attr("class","node-label")
+    .attr("dy", d => rScale(d.freq) + 11)
+    .attr("font-size", d => Math.max(9, Math.min(rScale(d.freq) * 0.7, 13)))
+    .attr("fill", "var(--muted)")
+    .text(d => d.id);
+
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(60).strength(0.4))
+    .force("charge", d3.forceManyBody().strength(-180).distanceMax(280))
+    .force("center", d3.forceCenter(W/2, H/2))
+    .force("collision", d3.forceCollide().radius(d => rScale(d.freq) + 4))
+    .alphaDecay(0.025)
+    .on("tick", () => {
+      linkSel
+        .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+      nodeG.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+  simulation = sim;
+}
+
+function selectNode(d, linkSel, rScale, colorScale) {
+  linkSel.classed("highlight", l =>
+    (l.source.id||l.source) === d.id || (l.target.id||l.target) === d.id
+  );
+  gNodes.selectAll(".node-circle")
+    .classed("selected", n => n.id === d.id);
+
+  document.getElementById("sb-word").textContent  = d.id;
+  document.getElementById("sb-word").style.color  = "var(--accent)";
+  document.getElementById("sb-freq").textContent  = `appears in ${d.freq} post titles`;
+
+  const neighbors = links
+    .filter(l => (l.source.id||l.source) === d.id || (l.target.id||l.target) === d.id)
+    .map(l => {
+      const other = (l.source.id||l.source) === d.id
+        ? (l.target.id||l.target) : (l.source.id||l.source);
+      return { word: other, weight: l.weight };
+    })
+    .sort((a,b) => b.weight - a.weight);
+
+  const maxW = neighbors[0]?.weight || 1;
+  const nbDiv = document.getElementById("sb-neighbors");
+  nbDiv.innerHTML = `<p style="font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">${neighbors.length} co-occurring words</p>`;
+  neighbors.slice(0, 20).forEach(n => {
+    const row = document.createElement("div");
+    row.className = "neighbor-row";
+    row.innerHTML = `
+      <div class="n-word">${n.word}</div>
+      <div class="n-bar-track"><div class="n-bar-fill" style="width:${(n.weight/maxW*100).toFixed(0)}%"></div></div>
+      <div class="n-count">${n.weight}</div>`;
+    nbDiv.appendChild(row);
+  });
+
+  const posts = postIndex[d.id] || [];
+  document.getElementById("sb-posts-title").style.display = posts.length ? "block" : "none";
+  const pList = document.getElementById("sb-posts-list");
+  pList.innerHTML = "";
+  posts.slice(0, 4).forEach(p => {
+    const el = document.createElement("div");
+    el.className = "post-snippet";
+    el.textContent = p.title.length > 80 ? p.title.slice(0,78)+"…" : p.title;
+    el.onclick = () => window.open(p.url, "_blank");
+    pList.appendChild(el);
+  });
+}
+
+function resetSim() {
+  if (simulation) simulation.stop();
+  document.getElementById("graph").innerHTML = "";
+  nodes = []; links = [];
+  document.getElementById("stats").textContent = "";
+  document.getElementById("sb-word").textContent = "Click a node";
+  document.getElementById("sb-word").style.color = "var(--muted)";
+  document.getElementById("sb-freq").textContent = "";
+  document.getElementById("sb-neighbors").innerHTML =
+    `<p style="font-size:12px;color:var(--muted);margin-top:6px">Select a word to see its co-occurring neighbors ranked by frequency.</p>`;
+  document.getElementById("sb-posts-list").innerHTML = "";
+  document.getElementById("sb-posts-title").style.display = "none";
+  showLoad(true, "Enter a subreddit and click Build Graph.");
+}
+
+window.addEventListener("load", () => showLoad(true, "Enter a subreddit and click Build Graph."));
+</script>
+</body>
+</html>

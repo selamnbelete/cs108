@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Semantic Timeline</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0b0d12; --bg2:#11141c; --surface:#181c28;
+  --border:rgba(255,255,255,0.07); --text:#e2e4ec; --muted:#6b7080;
+  --accent:#34d399;
+}
+body { background:var(--bg); color:var(--text); font-family:'SF Mono','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+#toolbar h1 { font-size:13px; font-weight:600; color:var(--accent); letter-spacing:.08em; text-transform:uppercase; }
+input[type=text] { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; outline:none; width:150px; }
+input[type=text]:focus { border-color:var(--accent); }
+button { background:var(--accent); border:none; border-radius:6px; color:#0b0d12; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:.05em; padding:6px 14px; text-transform:uppercase; }
+button.sec { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+button:hover { opacity:.85; } button:disabled { opacity:.3; cursor:not-allowed; }
+select { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:12px; padding:5px 8px; outline:none; }
+label { font-size:12px; color:var(--muted); }
+#stats { font-size:11px; color:var(--muted); margin-left:auto; }
+#main { display:flex; flex:1; overflow:hidden; flex-direction:column; }
+#chart-area { flex:1; position:relative; overflow:hidden; }
+svg#stream { width:100%; height:100%; display:block; }
+.stream-path { cursor:pointer; transition:opacity .2s; }
+.stream-path:hover { opacity:1 !important; }
+.stream-label { font-family:inherit; fill:rgba(255,255,255,0.7); font-size:11px; pointer-events:none; }
+.axis text { fill:var(--muted); font-size:11px; font-family:inherit; }
+.axis path, .axis line { stroke:var(--border); }
+.hover-line { stroke:rgba(255,255,255,0.2); stroke-width:1; stroke-dasharray:3 3; pointer-events:none; }
+#bottom-panel { height:140px; background:var(--bg2); border-top:1px solid var(--border); flex-shrink:0; display:flex; overflow:hidden; }
+#post-feed { flex:1; overflow-y:auto; padding:8px 16px; }
+#post-feed::-webkit-scrollbar { width:4px; }
+#post-feed::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+#post-feed-title { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+.feed-post { font-size:11px; color:#b0b4cc; line-height:1.5; margin-bottom:4px; padding:4px 8px; background:var(--surface); border-radius:3px; cursor:pointer; border:1px solid var(--border); }
+.feed-post:hover { border-color:var(--accent); }
+#legend-panel { width:220px; padding:10px 14px; border-left:1px solid var(--border); overflow-y:auto; }
+#legend-panel::-webkit-scrollbar { width:4px; }
+#legend-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+#legend-title { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+.leg-row { display:flex; align-items:center; gap:7px; margin-bottom:5px; cursor:pointer; font-size:11px; color:var(--muted); transition:color .15s; }
+.leg-row:hover { color:var(--text); }
+.leg-swatch { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+#tooltip { position:fixed; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 10px; font-size:11px; color:var(--text); pointer-events:none; opacity:0; transition:opacity .1s; z-index:20; line-height:1.7; }
+#loading { position:absolute; inset:0; background:rgba(11,13,18,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:13px; color:var(--muted); z-index:10; }
+#loading.hidden { display:none; }
+.spin { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>📈 Semantic Timeline</h1>
+  <label>r/</label>
+  <input id="sub-input" type="text" value="news" />
+  <label>Buckets:</label>
+  <select id="bucket-sel">
+    <option value="2">2-hour</option>
+    <option value="4" selected>4-hour</option>
+    <option value="6">6-hour</option>
+    <option value="12">12-hour</option>
+  </select>
+  <label>Top words:</label>
+  <select id="top-n">
+    <option value="8">8</option>
+    <option value="12" selected>12</option>
+    <option value="16">16</option>
+  </select>
+  <button id="load-btn" onclick="load()">▶ Build Timeline</button>
+  <span id="stats"></span>
+</div>
+<div id="main">
+  <div id="chart-area">
+    <svg id="stream"></svg>
+    <div id="loading"><div class="spin"></div><span id="load-msg">Enter a subreddit and click Build Timeline.</span></div>
+  </div>
+  <div id="bottom-panel">
+    <div id="post-feed">
+      <div id="post-feed-title">Posts — hover a stream band to filter</div>
+      <div id="post-feed-list"></div>
+    </div>
+    <div id="legend-panel">
+      <div id="legend-title">Words (click to isolate)</div>
+      <div id="legend-rows"></div>
+    </div>
+  </div>
+</div>
+<div id="tooltip"></div>
+<script>
+const HEADERS = {"User-Agent":"cs108-lab/1.0"};
+const STOP = new Set([
+  "the","a","an","and","or","but","in","on","of","to","is","it","for","with",
+  "that","this","be","are","was","has","not","by","at","from","as","have","you",
+  "they","we","he","she","i","r","u","amp","just","get","new","like","more",
+  "how","your","about","will","also","can","its","all","been","would","their",
+  "do","so","if","out","one","up","what","no","than","my","into","after","says",
+  "say","over","were","when","who","which","study","found","show","could","using",
+  "used","first","two","may","via","find","some","here","there","very","says",
+]);
+
+const COLORS = [
+  "#34d399","#60a5fa","#f97316","#a78bfa","#f472b6",
+  "#facc15","#38bdf8","#fb923c","#4ade80","#c084fc",
+  "#fca5a5","#67e8f9","#86efac","#fde68a","#d8b4fe","#a5f3fc",
+];
+
+let streamData = null;
+let isolatedWord = null;
+
+function showLoad(on, msg) {
+  document.getElementById("loading").classList.toggle("hidden", !on);
+  if (msg) document.getElementById("load-msg").textContent = msg;
+}
+
+async function load() {
+  const sub       = document.getElementById("sub-input").value.trim();
+  const bucketHrs = parseInt(document.getElementById("bucket-sel").value);
+  const topN      = parseInt(document.getElementById("top-n").value);
+  if (!sub) return;
+
+  document.getElementById("load-btn").disabled = true;
+  showLoad(true, `Fetching r/${sub} (new feed for time data)…`);
+  isolatedWord = null;
+
+  try {
+    // Fetch /new for time-stamped posts
+    const target = `https://www.reddit.com/r/${sub}/new.json?limit=100`;
+    const resp = await fetch(
+      `https://corsproxy.io/?url=${encodeURIComponent(target)}`
+    );
+    const data = await resp.json();
+    const posts = (data.data?.children || []).map(p => ({
+      title: p.data.title || "",
+      url:   `https://reddit.com${p.data.permalink}`,
+      time:  p.data.created_utc * 1000,
+      score: p.data.score || 0,
+    }));
+
+    if (!posts.length) throw new Error("No posts found");
+
+    // Bucket by time
+    const now    = Date.now();
+    const oldest = d3.min(posts, p => p.time);
+    const spanMs = now - oldest;
+    const bucketMs = bucketHrs * 3600 * 1000;
+    const nBuckets = Math.max(2, Math.ceil(spanMs / bucketMs));
+
+    const buckets = Array.from({length: nBuckets}, (_, i) => ({
+      tStart: oldest + i * bucketMs,
+      tEnd:   oldest + (i+1) * bucketMs,
+      posts:  [],
+      label:  new Date(oldest + i * bucketMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+    }));
+
+    posts.forEach(p => {
+      const idx = Math.min(
+        Math.floor((p.time - oldest) / bucketMs),
+        nBuckets - 1
+      );
+      buckets[idx].posts.push(p);
+    });
+
+    // Count words per bucket
+    const globalFreq = {};
+    buckets.forEach(b => {
+      b.wordCounts = {};
+      b.posts.forEach(p => {
+        const words = [...new Set(
+          p.title.toLowerCase().replace(/[^a-z\s]/g," ")
+            .split(/\s+/).filter(w => w.length >= 4 && !STOP.has(w))
+        )];
+        words.forEach(w => {
+          b.wordCounts[w] = (b.wordCounts[w]||0) + 1;
+          globalFreq[w] = (globalFreq[w]||0) + 1;
+        });
+      });
+    });
+
+    const topWords = Object.entries(globalFreq)
+      .sort((a,b) => b[1]-a[1]).slice(0, topN).map(([w]) => w);
+
+    streamData = { buckets, topWords, posts };
+
+    document.getElementById("stats").textContent =
+      `${posts.length} posts · ${nBuckets} time buckets · ${topWords.length} words`;
+
+    renderStream(streamData);
+    buildLegend(topWords);
+    showAllPosts(posts);
+  } catch(e) {
+    showLoad(true, "Error: " + e.message);
+    document.getElementById("load-btn").disabled = false;
+    return;
+  }
+
+  showLoad(false);
+  document.getElementById("load-btn").disabled = false;
+}
+
+function renderStream({ buckets, topWords }) {
+  const svgEl = document.getElementById("stream");
+  svgEl.innerHTML = "";
+  const margin = {top:20, right:20, bottom:35, left:50};
+  const W = svgEl.clientWidth  - margin.left - margin.right;
+  const H = svgEl.clientHeight - margin.top  - margin.bottom;
+  const svg = d3.select(svgEl);
+  const g   = svg.append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+  // Stack data
+  const stackInput = buckets.map((b, i) => {
+    const row = { bucket: i, label: b.label, posts: b.posts };
+    topWords.forEach(w => { row[w] = b.wordCounts[w] || 0; });
+    return row;
+  });
+
+  const stack   = d3.stack().keys(topWords).offset(d3.stackOffsetWiggle).order(d3.stackOrderInsideOut);
+  const series  = stack(stackInput);
+
+  const xScale  = d3.scaleLinear([0, buckets.length-1], [0, W]);
+  const yExtent = [
+    d3.min(series, s => d3.min(s, d => d[0])),
+    d3.max(series, s => d3.max(s, d => d[1])),
+  ];
+  const yScale  = d3.scaleLinear(yExtent, [H, 0]);
+
+  const area = d3.area()
+    .x((d,i) => xScale(i))
+    .y0(d => yScale(d[0]))
+    .y1(d => yScale(d[1]))
+    .curve(d3.curveCatmullRom);
+
+  // Paths
+  g.selectAll(".stream-path")
+    .data(series)
+    .join("path")
+    .attr("class","stream-path")
+    .attr("d", area)
+    .attr("fill", (d,i) => COLORS[i % COLORS.length])
+    .attr("opacity", 0.8)
+    .attr("data-word", d => d.key)
+    .on("mouseover", (e, d) => {
+      if (isolatedWord) return;
+      g.selectAll(".stream-path").attr("opacity", p => p.key === d.key ? 1 : 0.2);
+      showPostsForWord(d.key);
+      showTooltip(e, d.key);
+    })
+    .on("mousemove", moveTooltip)
+    .on("mouseout", () => {
+      if (isolatedWord) return;
+      g.selectAll(".stream-path").attr("opacity", 0.8);
+      showAllPosts(streamData.posts);
+      hideTooltip();
+    })
+    .on("click", (e, d) => toggleIsolate(d.key, g));
+
+  // Stream labels at peak
+  series.forEach((s, i) => {
+    const peakIdx = d3.maxIndex(s, d => d[1] - d[0]);
+    const midY = yScale((s[peakIdx][0] + s[peakIdx][1]) / 2);
+    const bandwidth = yScale(s[peakIdx][0]) - yScale(s[peakIdx][1]);
+    if (bandwidth < 14) return;
+    g.append("text").attr("class","stream-label")
+      .attr("x", xScale(peakIdx))
+      .attr("y", midY)
+      .attr("text-anchor","middle")
+      .attr("dominant-baseline","middle")
+      .attr("font-size", Math.min(bandwidth * 0.5, 13))
+      .text(s.key);
+  });
+
+  // X axis (time labels)
+  const xAxis = d3.axisBottom(xScale)
+    .ticks(Math.min(buckets.length, 8))
+    .tickFormat(i => buckets[Math.round(i)]?.label || "");
+  g.append("g").attr("class","axis").attr("transform",`translate(0,${H})`)
+    .call(xAxis);
+
+  // Hover line
+  const hoverLine = g.append("line").attr("class","hover-line")
+    .attr("y1",0).attr("y2",H).attr("opacity",0);
+
+  svg.on("mousemove", function(e) {
+    const [mx] = d3.pointer(e, g.node());
+    const bucketIdx = Math.round(xScale.invert(mx));
+    if (bucketIdx < 0 || bucketIdx >= buckets.length) return;
+    hoverLine.attr("x1", xScale(bucketIdx)).attr("x2", xScale(bucketIdx)).attr("opacity",1);
+  }).on("mouseleave", () => hoverLine.attr("opacity",0));
+}
+
+function toggleIsolate(word, g) {
+  if (isolatedWord === word) {
+    isolatedWord = null;
+    g.selectAll(".stream-path").attr("opacity", 0.8);
+    showAllPosts(streamData.posts);
+  } else {
+    isolatedWord = word;
+    g.selectAll(".stream-path").attr("opacity", p => p.key === word ? 1 : 0.08);
+    showPostsForWord(word);
+  }
+}
+
+function buildLegend(topWords) {
+  const container = document.getElementById("legend-rows");
+  container.innerHTML = "";
+  topWords.forEach((w, i) => {
+    const row = document.createElement("div");
+    row.className = "leg-row";
+    row.innerHTML = `<div class="leg-swatch" style="background:${COLORS[i%COLORS.length]}"></div>${w}`;
+    row.onclick = () => {
+      const g = d3.select("#stream g");
+      toggleIsolate(w, g);
+    };
+    container.appendChild(row);
+  });
+}
+
+function showAllPosts(posts) {
+  const list = document.getElementById("post-feed-list");
+  document.getElementById("post-feed-title").textContent = `All posts (${posts.length})`;
+  list.innerHTML = "";
+  posts.slice(0, 20).forEach(p => {
+    const el = document.createElement("div");
+    el.className = "feed-post";
+    el.textContent = p.title.length > 90 ? p.title.slice(0,88)+"…" : p.title;
+    el.onclick = () => window.open(p.url,"_blank");
+    list.appendChild(el);
+  });
+}
+
+function showPostsForWord(word) {
+  if (!streamData) return;
+  const matching = streamData.posts.filter(p =>
+    p.title.toLowerCase().includes(word)
+  );
+  const list = document.getElementById("post-feed-list");
+  document.getElementById("post-feed-title").textContent =
+    `Posts containing "${word}" (${matching.length})`;
+  list.innerHTML = "";
+  matching.slice(0, 15).forEach(p => {
+    const el = document.createElement("div");
+    el.className = "feed-post";
+    // Highlight the word
+    const safe = p.title.replace(new RegExp(`(${word})`, "gi"),
+      `<b style="color:var(--accent)">$1</b>`);
+    el.innerHTML = safe.length > 200 ? safe.slice(0,198)+"…" : safe;
+    el.onclick = () => window.open(p.url,"_blank");
+    list.appendChild(el);
+  });
+}
+
+function showTooltip(e, word) {
+  const tt = document.getElementById("tooltip");
+  tt.innerHTML = `<b style="color:var(--accent)">${word}</b><br>
+    <span style="color:var(--muted)">click to isolate · hover to preview</span>`;
+  tt.style.opacity = "1";
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const tt = document.getElementById("tooltip");
+  tt.style.left = (e.clientX + 14) + "px";
+  tt.style.top  = (e.clientY - 10) + "px";
+}
+function hideTooltip() {
+  document.getElementById("tooltip").style.opacity = "0";
+}
+
+window.addEventListener("load", () => showLoad(true, "Enter a subreddit and click Build Timeline."));
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bubble Cloud</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0b0d12; --bg2:#11141c; --surface:#181c28;
+  --border:rgba(255,255,255,0.07); --text:#e2e4ec; --muted:#6b7080;
+  --accent:#a78bfa; --hot:#f97316; --green:#34d399;
+}
+body { background:var(--bg); color:var(--text); font-family:'SF Mono','Fira Code',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+#toolbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+#toolbar h1 { font-size:13px; font-weight:600; color:var(--accent); letter-spacing:.08em; text-transform:uppercase; }
+input[type=text] { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px; padding:5px 10px; outline:none; width:150px; }
+input[type=text]:focus { border-color:var(--accent); }
+button { background:var(--accent); border:none; border-radius:6px; color:#0b0d12; cursor:pointer; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:.05em; padding:6px 14px; text-transform:uppercase; }
+button.sec { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+button:hover { opacity:.85; } button:disabled { opacity:.3; cursor:not-allowed; }
+select { background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:12px; padding:5px 8px; outline:none; }
+label { font-size:12px; color:var(--muted); }
+#stats { font-size:11px; color:var(--muted); margin-left:auto; }
+#hint { font-size:11px; color:var(--muted); opacity:.5; text-align:center; padding:5px; flex-shrink:0; background:var(--bg2); border-bottom:1px solid var(--border); }
+#canvas-wrap { flex:1; position:relative; overflow:hidden; }
+svg#cloud { width:100%; height:100%; }
+.bubble { cursor:pointer; transition:opacity .2s; }
+.bubble:hover { opacity:.85; }
+.bubble.pinned { stroke:#fff; stroke-width:2; }
+.bubble.dimmed { opacity:.12; }
+.bub-label { pointer-events:none; text-anchor:middle; dominant-baseline:central; font-family:inherit; fill:#fff; }
+.cooc-line { pointer-events:none; stroke:var(--hot); fill:none; opacity:0; transition:opacity .2s; }
+.cooc-line.visible { opacity:.6; }
+#loading { position:absolute; inset:0; background:rgba(11,13,18,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:13px; color:var(--muted); z-index:10; }
+#loading.hidden { display:none; }
+.spin { width:26px; height:26px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#tooltip { position:fixed; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:12px; color:var(--text); pointer-events:none; opacity:0; transition:opacity .1s; z-index:20; max-width:240px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>🫧 Bubble Cloud</h1>
+  <label>r/</label>
+  <input id="sub-input" type="text" value="worldnews" />
+  <label>Top words:</label>
+  <select id="top-n">
+    <option value="40">40</option>
+    <option value="60" selected>60</option>
+    <option value="80">80</option>
+  </select>
+  <button id="load-btn" onclick="load()">▶ Build Cloud</button>
+  <button class="sec" onclick="clearPin()">Unpin</button>
+  <span id="stats"></span>
+</div>
+<div id="hint">hover a bubble to see co-occurring words · click to pin · click again to unpin</div>
+<div id="canvas-wrap">
+  <svg id="cloud"></svg>
+  <div id="loading"><div class="spin"></div><span id="load-msg">Enter a subreddit and click Build Cloud.</span></div>
+</div>
+<div id="tooltip"></div>
+<script>
+const HEADERS = {"User-Agent":"cs108-lab/1.0"};
+const STOP = new Set([
+  "the","a","an","and","or","but","in","on","of","to","is","it","for","with",
+  "that","this","be","are","was","has","not","by","at","from","as","have","you",
+  "they","we","he","she","i","r","u","amp","just","get","new","like","more",
+  "how","your","about","will","also","can","its","all","been","would","their",
+  "do","so","if","out","one","up","what","no","than","my","into","after","says",
+  "say","over","were","when","who","which","study","found","show","could","using",
+  "used","first","two","may","via","find","some","here","there","very",
+]);
+
+let bubbleData = [];
+let coocMap    = {};
+let pinnedWord = null;
+let simulation;
+
+function showLoad(on, msg) {
+  document.getElementById("loading").classList.toggle("hidden", !on);
+  if (msg) document.getElementById("load-msg").textContent = msg;
+}
+
+async function load() {
+  const sub  = document.getElementById("sub-input").value.trim();
+  const topN = parseInt(document.getElementById("top-n").value);
+  if (!sub) return;
+
+  document.getElementById("load-btn").disabled = true;
+  showLoad(true, `Fetching r/${sub}…`);
+  pinnedWord = null;
+
+  try {
+    const target = `https://www.reddit.com/r/${sub}/hot.json?limit=100`;
+    const resp = await fetch(
+      `https://corsproxy.io/?url=${encodeURIComponent(target)}`
+    );
+    const data = await resp.json();
+    const posts = (data.data?.children || []).map(p => ({
+      title: p.data.title || "",
+      url:   `https://reddit.com${p.data.permalink}`,
+    }));
+
+    const freq = {}, cooc = {}, postIndex = {};
+    posts.forEach(p => {
+      const words = [...new Set(
+        p.title.toLowerCase().replace(/[^a-z\s]/g," ")
+          .split(/\s+/).filter(w => w.length >= 4 && !STOP.has(w))
+      )];
+      words.forEach(w => {
+        freq[w] = (freq[w]||0) + 1;
+        if (!postIndex[w]) postIndex[w] = [];
+        if (postIndex[w].length < 5) postIndex[w].push(p.title);
+      });
+      for (let i=0; i<words.length; i++)
+        for (let j=i+1; j<words.length; j++) {
+          const key = [words[i],words[j]].sort().join("|||");
+          cooc[key] = (cooc[key]||0) + 1;
+        }
+    });
+
+    const topWords = Object.entries(freq)
+      .sort((a,b) => b[1]-a[1]).slice(0, topN).map(([w,f]) => ({ word:w, freq:f, posts:postIndex[w]||[] }));
+
+    const topSet = new Set(topWords.map(d => d.word));
+    coocMap = {};
+    Object.entries(cooc).forEach(([key, cnt]) => {
+      const [a,b] = key.split("|||");
+      if (!topSet.has(a) || !topSet.has(b)) return;
+      if (!coocMap[a]) coocMap[a] = {};
+      if (!coocMap[b]) coocMap[b] = {};
+      coocMap[a][b] = cnt;
+      coocMap[b][a] = cnt;
+    });
+
+    bubbleData = topWords;
+    document.getElementById("stats").textContent =
+      `${posts.length} posts · ${topN} words`;
+    renderCloud();
+  } catch(e) {
+    showLoad(true, "Fetch failed: " + e.message);
+  }
+
+  showLoad(false);
+  document.getElementById("load-btn").disabled = false;
+}
+
+const PALETTES = [
+  "#60a5fa","#a78bfa","#34d399","#f97316","#f472b6",
+  "#38bdf8","#fb923c","#c084fc","#4ade80","#facc15",
+];
+
+function renderCloud() {
+  const svgEl = document.getElementById("cloud");
+  svgEl.innerHTML = "";
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+  const svg = d3.select(svgEl);
+
+  const maxFreq = d3.max(bubbleData, d => d.freq) || 1;
+  const rScale  = d3.scaleSqrt([1, maxFreq], [16, 60]);
+
+  // Assign colors by frequency rank cluster
+  const colorFn = d => PALETTES[Math.floor(
+    (bubbleData.indexOf(d) / bubbleData.length) * PALETTES.length
+  ) % PALETTES.length];
+
+  // Lines layer (drawn under bubbles)
+  const gLines = svg.append("g").attr("id","g-lines");
+  const gBubs  = svg.append("g").attr("id","g-bubs");
+
+  const nodeData = bubbleData.map(d => ({
+    ...d, r: rScale(d.freq),
+    x: W/2 + (Math.random()-0.5)*200,
+    y: H/2 + (Math.random()-0.5)*200,
+  }));
+
+  const nodeMap = Object.fromEntries(nodeData.map(d => [d.word, d]));
+
+  // Pre-build co-occurrence line elements (hidden by default)
+  const allPairs = new Set();
+  Object.entries(coocMap).forEach(([a, neighbors]) => {
+    Object.keys(neighbors).forEach(b => {
+      const key = [a,b].sort().join("|||");
+      allPairs.add(key);
+    });
+  });
+
+  const lineEls = {};
+  allPairs.forEach(key => {
+    const [a,b] = key.split("|||");
+    if (!nodeMap[a] || !nodeMap[b]) return;
+    const cnt = coocMap[a]?.[b] || 1;
+    const el = gLines.append("line")
+      .attr("class","cooc-line")
+      .attr("data-pair", key)
+      .attr("stroke-width", Math.min(cnt * 1.2, 5));
+    lineEls[key] = el;
+  });
+
+  // Bubbles
+  const circles = gBubs.selectAll("g.bub-g")
+    .data(nodeData, d => d.word)
+    .join("g")
+    .attr("class","bub-g")
+    .on("mouseover", (e,d) => {
+      if (pinnedWord) return;
+      showCooc(d, lineEls, nodeMap, circles, false);
+      showTooltip(e, d);
+    })
+    .on("mousemove", (e,d) => moveTooltip(e))
+    .on("mouseout", (e,d) => {
+      if (pinnedWord) return;
+      hideCooc(lineEls, circles);
+      hideTooltip();
+    })
+    .on("click", (e,d) => {
+      if (pinnedWord === d.word) {
+        pinnedWord = null;
+        hideCooc(lineEls, circles);
+        hideTooltip();
+      } else {
+        pinnedWord = d.word;
+        showCooc(d, lineEls, nodeMap, circles, true);
+        showTooltip(e, d);
+      }
+    });
+
+  circles.append("circle")
+    .attr("class","bubble")
+    .attr("r", d => d.r)
+    .attr("fill", colorFn)
+    .attr("opacity", .8);
+
+  circles.append("text")
+    .attr("class","bub-label")
+    .attr("font-size", d => Math.max(9, Math.min(d.r * 0.45, 15)))
+    .text(d => d.word);
+
+  simulation = d3.forceSimulation(nodeData)
+    .force("charge", d3.forceManyBody().strength(-30))
+    .force("center", d3.forceCenter(W/2, H/2))
+    .force("collision", d3.forceCollide().radius(d => d.r + 3).strength(0.9))
+    .force("x", d3.forceX(W/2).strength(0.04))
+    .force("y", d3.forceY(H/2).strength(0.04))
+    .alphaDecay(0.02)
+    .on("tick", () => {
+      circles.attr("transform", d => `translate(${d.x},${d.y})`);
+      // Update visible lines
+      gLines.selectAll(".cooc-line.visible").each(function() {
+        const key = this.dataset.pair;
+        const [a,b] = key.split("|||");
+        const na = nodeMap[a], nb = nodeMap[b];
+        if (na && nb) {
+          d3.select(this)
+            .attr("x1",na.x).attr("y1",na.y)
+            .attr("x2",nb.x).attr("y2",nb.y);
+        }
+      });
+    });
+}
+
+function showCooc(d, lineEls, nodeMap, circles, pinned) {
+  const neighbors = coocMap[d.word] || {};
+  const neighborSet = new Set(Object.keys(neighbors));
+
+  // Show relevant lines
+  Object.entries(lineEls).forEach(([key, el]) => {
+    const [a,b] = key.split("|||");
+    const relevant = a === d.word || b === d.word;
+    const na = nodeMap[a], nb = nodeMap[b];
+    el.classed("visible", relevant);
+    if (relevant && na && nb) {
+      el.attr("x1",na.x).attr("y1",na.y).attr("x2",nb.x).attr("y2",nb.y);
+    }
+  });
+
+  circles.select(".bubble")
+    .classed("pinned", n => n.word === d.word)
+    .classed("dimmed",  n => n.word !== d.word && !neighborSet.has(n.word));
+}
+
+function hideCooc(lineEls, circles) {
+  Object.values(lineEls).forEach(el => el.classed("visible", false));
+  circles.select(".bubble").classed("dimmed",false).classed("pinned",false);
+}
+
+function showTooltip(e, d) {
+  const neighbors = coocMap[d.word] || {};
+  const top5 = Object.entries(neighbors).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const tt = document.getElementById("tooltip");
+  tt.innerHTML = `<b style="color:var(--accent)">${d.word}</b> — ${d.freq} posts<br>
+    <span style="color:var(--muted);font-size:10px">co-occurs with:</span><br>
+    ${top5.map(([w,c]) => `<span style="color:var(--hot)">${w}</span> <span style="color:var(--muted)">(${c}×)</span>`).join(" · ")}`;
+  tt.style.opacity = "1";
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const tt = document.getElementById("tooltip");
+  tt.style.left = (e.clientX + 14) + "px";
+  tt.style.top  = (e.clientY - 10) + "px";
+}
+function hideTooltip() {
+  document.getElementById("tooltip").style.opacity = "0";
+}
+
+function clearPin() {
+  pinnedWord = null;
+  const svgEl = document.getElementById("cloud");
+  d3.select(svgEl).selectAll(".cooc-line").classed("visible",false);
+  d3.select(svgEl).selectAll(".bubble").classed("dimmed",false).classed("pinned",false);
+  hideTooltip();
+}
+
+window.addEventListener("load", () => showLoad(true, "Enter a subreddit and click Build Cloud."));
+</script>
+</body>
+</html>
