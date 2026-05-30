@@ -6,6 +6,9 @@ from Button import Button
 pygame.init()
 pygame.mixer.init()
 
+click_sound = pygame.mixer.Sound("sounds/click.wav")
+water_sound = pygame.mixer.Sound("sounds/water.wav")
+
 WIDTH = 800
 HEIGHT = 600
 
@@ -24,11 +27,6 @@ sun_button = Button(230, 500, 150, 50, "Sunlight")
 reset_button = Button(590, 500, 150, 50, "Reset")
 
 game_state = "home"
-
-# Optional sounds
-# Put sound files in the same folder if you have them
-water_sound = None
-grow_sound = None
 
 def draw_text(text, x, y, font_used, color=(0, 0, 0)):
     img = font_used.render(text, True, color)
@@ -231,16 +229,20 @@ while running:
 
         if game_state == "home":
             if start_button.is_clicked(event):
+                click_sound.play()
                 game_state = "game"
 
         elif game_state == "game":
             if water_button.is_clicked(event):
+                pygame.mixer.Sound("sounds/water.wav").play()
                 plant.water_plant()
 
             if sun_button.is_clicked(event):
+                pygame.mixer.Sound("sounds/click.wav").play()
                 plant.give_sunlight()
 
             if reset_button.is_clicked(event):
+                pygame.mixer.Sound("sounds/click.wav").play()
                 reset_game()
 
     if game_state == "home":
